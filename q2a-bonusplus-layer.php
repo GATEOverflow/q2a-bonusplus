@@ -1,192 +1,278 @@
 <?php
 
-/*
-	Plugin Name: q2a Bonus Plus
-*/
-
 class qa_html_theme_layer extends qa_html_theme_base
 {
-	
+	private $version = 1.5;
+	// profile page, user allowed to give bonus points
+	private function bonusplus_can_give()
+	{
+		return qa_is_logged_in()
+			&& $this->template == 'user'
+			&& qa_get_logged_in_level() >= qa_opt('bonusplus_bonuser_level');
+	}
+	private function bonusplus_is_admin()
+	{
+		return qa_is_logged_in() && qa_get_logged_in_level() >= QA_USER_LEVEL_ADMIN;
+	}
+	private function bonusplus_is_self()
+	{
+		return qa_is_logged_in() && (int)qa_handle_to_userid(qa_request_part(1)) === (int)qa_get_logged_in_userid();
+	}
+
+	// profile page, bonus givers (any profile) or a member looking at their own profile
+	private function bonusplus_can_history()
+	{
+		if (!qa_is_logged_in() || $this->template != 'user') {
+			return false;
+		}
+		if ($this->bonusplus_can_give()) {
+			return true;
+		}
+		//echo "qa_handle_to_userid(qa_request_part(1)) = " . (int)qa_handle_to_userid(qa_request_part(1)) . "<br>";
+		return (int)qa_handle_to_userid(qa_request_part(1)) === (int)qa_get_logged_in_userid();
+	}
+
+	// scripts and css are needed whenever either modal can appear
+	private function bonusplus_active()
+	{
+		return $this->bonusplus_can_history();
+	}
+
 	function head_script()
 	{
 		qa_html_theme_base::head_script();
-		
-		if(qa_is_logged_in() && $this->template=='user' && qa_get_logged_in_level() >= qa_opt('bonusplus_bonuser_level'))
-		{
-			$this->output('
-				<script>
-					var bonusAjaxURL = "'.qa_path('ajaxbonus').'";
-					var bonuserid = '.qa_get_logged_in_userid().';
-					var receiverid = '.qa_handle_to_userid(qa_request_part(1)).';
-				</script>
-			');  
-			
-			
-			$this->output('
-				<script defer type="text/javascript" src="'.QA_HTML_THEME_LAYER_URLTOROOT.'script.js"></script>
-			');
+
+		if ($this->bonusplus_active()) {
+			$config = array(
+				'ajaxUrl'    => qa_path('ajaxbonus'),
+				'receiverid' => (int)qa_handle_to_userid(qa_request_part(1)),
+				'code'       => qa_get_form_security_code('bonusplus'),
+				'min'        => (int)qa_opt('bonusplus_min_amount'),
+				'max'        => (int)qa_opt('bonusplus_max_amount'),
+				'canGive'    => (bool)$this->bonusplus_can_give(),
+				'showGiver'  => (bool)$this->bonusplus_can_give(), // "given by" column only for bonus givers
+				'i18n'       => array(
+					'amountInvalid'  => q2a_bp_lang('err_amount', 'Enter a whole number other than 0.'),
+					'amountRange'    => q2a_bp_lang('err_range', 'Amount must be between %min% and %max%.'),
+					'reasonRequired' => q2a_bp_lang('err_reason', 'Please choose a reason.'),
+					'otherRequired'  => q2a_bp_lang('err_other', 'Please write the new reason.'),
+					'networkError'   => q2a_bp_lang('err_network', 'Could not reach the server. Please try again.'),
+					'send'           => q2a_bp_lang('send', 'Send'),
+					'sending'        => q2a_bp_lang('sending', 'Sending...'),
+					'success'        => q2a_bp_lang('success', 'Bonus sent!'),
+					'historyError'   => q2a_bp_lang('history_error', 'Could not load the history. Please try again.'),
+					'historyLoading' => q2a_bp_lang('history_loading', 'Loading...'),
+					'loadMore'       => q2a_bp_lang('history_more', 'Load more'),
+					'giveBonus'      => q2a_bp_lang('give_bonus', 'Give bonus'),
+					'historyButton'  => q2a_bp_lang('history_button', 'Bonus history'),
+				),
+			);
+
+			$this->output(
+				'<script>window.BonusPlus = ' . json_encode($config, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . ';</script>'
+			);
+			$this->output(
+				'<script defer src="' . QA_HTML_THEME_LAYER_URLTOROOT . 'script.js?v=' . $this->version . '"></script>'
+			);
 		}
-		
-	} // end head_script
-	
-	function head_custom()
+	}
+
+	function head_css()
 	{
-		parent::head_custom();
-		$hidecss = qa_opt('bonusplus_exclude_css') === '1';
-		if ( !$hidecss && $this->template=="user" && qa_get_logged_in_level() >= qa_opt('bonuser_level'))
-		{
-			$bonuspluss_css = '
-				<style>
-				input#hide_button {
-					display: none;
-				}
+		qa_html_theme_base::head_css();
+		// notification icons: needed on every page for logged-in users (the bell is everywhere)
+		if (qa_is_logged_in()) {
+			$this->output(
+				'<link rel="stylesheet" href="' . QA_HTML_THEME_LAYER_URLTOROOT . 'bonusplus-icons.css?v=' . $this->version . '">'
+			);
+		}
 
-				#bonusplus-popup {
-					background: #000;
-    				background: rgba(0,0,0,.75);
-    				height: 100%;
-    				width: 100%;
-    				position: fixed;
-    				top: 0;
-    				left: 0;
-    				display: none;
-    				z-index: 5119;
-				}
-
-				#bonusplus-center {
-					margin: 6% auto;
-					width: auto;
-					text-align: center;
-				}
-
-				.qa-bonusplus-wrap {
-    				display: inline-block;
-    				min-width: 250px;
-    				position: relative;
-    				background: #fff;
-    				border: 1px solid #f00;
-    				padding: 15px;
-    				text-align: left;
-    				z-index: 3335;
-				}
-
-				.qa-bonusplus-wrap div {
-    				margin: 10px;
-				}
-
-				.qa-bonus-reason-text {
-    				height: auto;
-    				width: 100%;
-				}
-
-				.qa-bonusplus-wrap .close-btn {
-    				position: absolute;
-    				top: 5px;
-    				right: 7px;
-    				font-size: 20px;
-    				color: #333;
-    				cursor: pointer;
-    				background: #eaeaea;
-    				border-radius: 3px;
-    				width: 20px;
-    				height: 20px;
-    				line-height: 20px;
-    				text-align: center;
-				}
-
-				.cep {
-    				float: left;
-				}
-
-				.sag {
-    				float: right;
-				}
-
-				input[name="qa-bonusplus-radio"] {
-    				margin: 0 2px 0 0;
-				}
-				</style>';
-			$this->output_raw( $bonuspluss_css );
+		if ($this->bonusplus_active()) {
+			$this->output(
+				'<link rel="stylesheet" href="' . QA_HTML_THEME_LAYER_URLTOROOT . 'bonusplus.css?v=' . $this->version . '">'
+			);
 		}
 	}
-	
-	public function form_button_data($button, $key, $style) {
-		
+
+	// hide the core "bonus" form controls; our modal replaces them
+	public function form_button_data($button, $key, $style)
+	{
 		if (isset($button['tags']) && $button['tags'] == 'name="dosetbonus"') {
-			$button['tags']='name="sendbonus" id="hide_button"';
+			$button['tags'] = 'name="sendbonus" id="hide_button" style="display:none"';
 		}
-		
-		qa_html_theme_base::form_button_data($button, $key, $style);		
+
+		qa_html_theme_base::form_button_data($button, $key, $style);
 	}
-	
+
 	public function form_number($field, $style)
 	{
 		if (isset($field['tags']) && $field['tags'] == 'name="bonus"') {
-			$field['tags']='name="bonus" disabled';
+			$field['tags'] = 'name="bonus" disabled';
 		}
 		qa_html_theme_base::form_number($field, $style);
 	}
-	
-	public function form_note($field, $style, $columns)
+
+	// "Bonus history" button at the top of the profile content
+	public function main_parts($content)
 	{
-		if (isset($field['id']) && $field['id'] == 'bonus') {
-			$field['note'] ='<button name="givebonusplus" value="givebonus" title="'.qa_lang('q2a_bonusplus_lang/give_bonus').'" type="submit" class="qa-form-wide-button qa-form-wide-button-givebonusplus" data-bonuserid="'.qa_get_logged_in_userid().'" data-receiverid="'.qa_handle_to_userid(qa_request_part(1)).'"><span>'.qa_lang('q2a_bonusplus_lang/give_bonus').'</span></button>';
+		// members (and givers without the core "bonus" row) get their own Bonus points row
+		if (($this->bonusplus_can_history()
+			&& isset($content['form_profile']['fields'])
+			&& !isset($content['form_profile']['fields']['bonus'])
+		)&& !(qa_get_logged_in_level() >= QA_USER_LEVEL_ADMIN)) {
+			$newfields = array();
+			$placed = false;
+
+			foreach ($content['form_profile']['fields'] as $key => $field) {
+				$newfields[$key] = $field;
+				if (!$placed && $key === 'points') { // right after the normal Points row
+					$newfields['bonusplus'] = $this->bonusplus_points_field();
+					$placed = true;
+				}
+			}
+			if (!$placed) {
+				$newfields['bonusplus'] = $this->bonusplus_points_field(); // fallback: end of the form
+			}
+			$content['form_profile']['fields'] = $newfields;
 		}
-		qa_html_theme_base::form_note($field, $style, $columns);
+
+		qa_html_theme_base::main_parts($content);
 	}
 
-	
+	private function bonusplus_points_field()
+	{
+		$receiverid = (int)qa_handle_to_userid(qa_request_part(1));
+		$stats = q2a_bp_get_history_stats($receiverid);
+
+		$html = '<div class="bp-inline bp-inline-row">'
+			. '<span class="bp-points-value">' . (int)$stats['net'] . '</span>'
+			. (($this->bonusplus_can_give() && ($this->bonusplus_is_admin() || !$this->bonusplus_is_self()))
+				? '<button type="button" id="bp-give-open" class="bp-inline-btn bp-inline-primary">'
+					. qa_html(q2a_bp_lang('give_bonus', 'Give bonus')) . '</button>'
+				: '')
+			. '<button type="button" id="bp-history-open" class="bp-inline-btn">'
+			. qa_html(q2a_bp_lang('history_button', 'Bonus history')) . '</button>'
+			. '</div>';
+
+		return array(
+			'type'  => 'custom',
+			'label' => qa_lang_html('q2a_bonusplus_lang/bonus_points'),
+			'html'  => $html,
+		);
+	}
+
+	private function bonusplus_history_modal()
+	{
+		$handle = qa_html(qa_request_part(1));
+		$giver  = $this->bonusplus_can_give();
+
+		$this->output('
+<div class="bp-modal" id="bonusplus-history" hidden>
+	<div class="bp-backdrop" data-bp-close></div>
+	<div class="bp-dialog bp-dialog-wide" role="dialog" aria-modal="true" aria-labelledby="bph-title">
+		<button type="button" class="bp-close" data-bp-close aria-label="Close">&times;</button>
+		<h3 class="bp-title" id="bph-title">' . qa_html(q2a_bp_lang('history_title', 'Bonus history')) . '</h3>
+		<p class="bp-sub">@' . $handle . '</p>
+
+		<div class="bp-alert" id="bph-alert" role="alert" hidden></div>
+
+		<div class="bp-stats">
+			<div class="bp-stat"><span>' . qa_html(q2a_bp_lang('history_net', 'Net total')) . '</span><strong id="bph-net">-</strong></div>
+			<div class="bp-stat"><span>' . qa_html(q2a_bp_lang('history_added', 'Added')) . '</span><strong id="bph-added" class="bp-pos">-</strong></div>
+			<div class="bp-stat"><span>' . qa_html(q2a_bp_lang('history_deducted', 'Deducted')) . '</span><strong id="bph-deducted" class="bp-neg">-</strong></div>
+			<div class="bp-stat"><span>' . qa_html(q2a_bp_lang('history_entries', 'Entries')) . '</span><strong id="bph-count">-</strong></div>
+		</div>
+
+		<div class="bp-table-wrap" id="bph-table-wrap">
+			<table class="bp-table">
+				<thead><tr>
+					<th>' . qa_html(q2a_bp_lang('history_date', 'Date')) . '</th>
+					<th class="bp-num">' . qa_html(q2a_bp_lang('history_points', 'Points')) . '</th>
+					<th>' . qa_html(q2a_bp_lang('reason_label', 'Reason')) . '</th>
+					' . ($giver ? '<th>' . qa_html(q2a_bp_lang('history_by', 'Given by')) . '</th>' : '') . '
+				</tr></thead>
+				<tbody id="bph-body"></tbody>
+			</table>
+		</div>
+		<p class="bp-empty" id="bph-empty" hidden>' . qa_html(q2a_bp_lang('history_empty', 'No bonus points have been given yet.')) . '</p>
+
+		<details class="bp-breakdown" id="bph-breakdown" hidden>
+			<summary>' . qa_html(q2a_bp_lang('history_by_reason', 'Totals by reason')) . '</summary>
+			<table class="bp-table">
+				<thead><tr>
+					<th>' . qa_html(q2a_bp_lang('reason_label', 'Reason')) . '</th>
+					<th class="bp-num">' . qa_html(q2a_bp_lang('history_entries', 'Entries')) . '</th>
+					<th class="bp-num">' . qa_html(q2a_bp_lang('history_points', 'Points')) . '</th>
+				</tr></thead>
+				<tbody id="bph-reasons"></tbody>
+			</table>
+		</details>
+
+		<div class="bp-actions">
+			<button type="button" class="bp-btn bp-btn-ghost" id="bph-more" hidden>' . qa_html(q2a_bp_lang('history_more', 'Load more')) . '</button>
+			<button type="button" class="bp-btn bp-btn-primary" data-bp-close>' . qa_html(q2a_bp_lang('close', 'Close')) . '</button>
+		</div>
+	</div>
+</div>
+			');
+	}
+
 	public function body_hidden()
 	{
-		if(qa_is_logged_in() && $this->template=="user" && qa_get_logged_in_level() >= qa_opt('bonuser_level'))
-		{
+		if ($this->bonusplus_can_history()) {
+			$this->bonusplus_history_modal();
+		}
+
+		if ($this->bonusplus_can_give()) {
+			$handle = qa_html(qa_request_part(1));
+			$min    = (int)qa_opt('bonusplus_min_amount');
+			$max    = (int)qa_opt('bonusplus_max_amount');
+
+			$options = '';
+			foreach (q2a_bp_get_reasons(true) as $r) {
+				$options .= '<option value="' . (int)$r['reasonid'] . '">' . qa_html($r['title']) . '</option>';
+			}
+
 			$this->output('
-			<div id="bonusplus-popup">
-				<div id="bonusplus-center">
-					<div class="qa-bonusplus-wrap">
-						<h4>
-							'.qa_lang('q2a_bonusplus_lang/reason').'
-						</h4>
-						<div class="bonus_amount">
-							<span>'.qa_lang('q2a_bonusplus_lang/bonus_amount').'</span><br/>
-							<input type="number" name="amount" min="'.qa_opt('bonusplus_min_amount').'" max="'.qa_opt('bonusplus_max_amount').'">
-						</div>
-						<div class="cep">
-							<input type="radio" name="qa-bonus-reason" value="1" checked>
-							<span>'.qa_lang('q2a_bonusplus_lang/reason_1').'</span><br/>
-							<input type="radio" name="qa-bonus-reason" value="2">
-							<span>'.qa_lang('q2a_bonusplus_lang/reason_2').'</span><br/>
-							<input type="radio" name="qa-bonus-reason" value="3">
-							<span>'.qa_lang('q2a_bonusplus_lang/reason_3').'</span><br/>
-							<input type="radio" name="qa-bonus-reason" value="8">
-							<span>'.qa_lang('q2a_bonusplus_lang/reason_8').'</span><br/>
-						</div>
-						<div class="sag">
-							<input type="radio" name="qa-bonus-reason" value="4">
-							<span>'.qa_lang('q2a_bonusplus_lang/reason_4').'</span><br/>
-							<input type="radio" name="qa-bonus-reason" value="5">
-							<span>'.qa_lang('q2a_bonusplus_lang/reason_5').'</span><br/>
-							<input type="radio" name="qa-bonus-reason" value="6">
-							<span>'.qa_lang('q2a_bonusplus_lang/reason_6').'</span><br/>
-							<input type="radio" name="qa-bonus-reason" value="7">
-							<span>'.qa_lang('q2a_bonusplus_lang/reason_7').'</span><br/>
-						</div>
-						
-						<div class="qa-bonus-reason-text-wrap">
-							<span>'.qa_lang('q2a_bonusplus_lang/reason_text').'</span><br/>
-							<textarea name="qa-bonus-reason-text" class="qa-bonus-reason-text" rows="3" maxlength="100" placeholder="Write details"></textarea><br/>
-							<input type="button" class="qa-sendbonus-button" value="'.qa_lang('q2a_bonusplus_lang/send').'">
-						</div>
-						<div class="close-btn">×</div>
-					</div>
-				</div>
-			</div>
+<div class="bp-modal" id="bonusplus-popup" hidden>
+	<div class="bp-backdrop" data-bp-close></div>
+	<div class="bp-dialog" role="dialog" aria-modal="true" aria-labelledby="bp-title">
+		<button type="button" class="bp-close" data-bp-close aria-label="Close">&times;</button>
+		<h3 class="bp-title" id="bp-title">' . qa_html(q2a_bp_lang('reason', 'Give bonus points')) . '</h3>
+		<p class="bp-sub">@' . $handle . '</p>
+
+		<div class="bp-alert" id="bp-alert" role="alert" hidden></div>
+
+		<div class="bp-field">
+			<label for="bp-amount">' . qa_html(q2a_bp_lang('bonus_amount', 'Amount')) . '</label>
+			<input type="number" id="bp-amount" step="1" min="' . $min . '" max="' . $max . '" inputmode="numeric" placeholder="e.g. 10" value="100">
+			<small>' . $min . ' &hellip; ' . $max . '</small>
+		</div>
+
+		<div class="bp-field">
+			<label for="bp-reason">' . qa_html(q2a_bp_lang('reason_label', 'Reason')) . '</label>
+			<select id="bp-reason">
+				' . $options . '
+				<option value="other">' . qa_html(q2a_bp_lang('reason_other', 'Other...')) . '</option>
+			</select>
+		</div>
+
+		<div class="bp-field" id="bp-other-wrap" hidden>
+			<label for="bp-other">' . qa_html(q2a_bp_lang('reason_new', 'New reason')) . '</label>
+			<textarea id="bp-other" rows="2" maxlength="100" placeholder="' . qa_html(q2a_bp_lang('reason_new_ph', 'Short description')) . '"></textarea>
+			<small>' . qa_html(q2a_bp_lang('reason_new_note', 'It will be saved and offered as a reason next time.')) . '</small>
+		</div>
+
+		<div class="bp-actions">
+			<button type="button" class="bp-btn bp-btn-ghost" data-bp-close>' . qa_html(q2a_bp_lang('cancel', 'Cancel')) . '</button>
+			<button type="button" class="bp-btn bp-btn-primary" id="bp-submit">' . qa_html(q2a_bp_lang('send', 'Send')) . '</button>
+		</div>
+	</div>
+</div>
 			');
 		}
-		// default method call outputs the form buttons
-		qa_html_theme_base::body_hidden();
-		
-	} // END function body_hidden()
-	
-} // end qa_html_theme_layer
 
+		qa_html_theme_base::body_hidden();
+	}
+
+} // end qa_html_theme_layer

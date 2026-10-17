@@ -1,0 +1,38 @@
+/*
+	q2a Bonus Plus - notification icons for the Flexible Notifications System.
+	The notification plugin puts the "icon" string from the extension on an <i> as a class.
+	Its own font only applies to classes starting with "pupi-fns-icon-", so we use our own
+	class names and draw the icon here with an SVG mask: no font files, it takes the text
+	colour (currentColor) and scales with the font size.
+*/
+
+.bp-fns-icon-plus::before,
+.bp-fns-icon-minus::before {
+	content: "";
+	display: inline-block;
+	width: 1.25em;
+	height: 1.25em;
+	margin: 0 .2em;
+	vertical-align: -0.25em;
+	background-color: currentColor;
+	-webkit-mask-repeat: no-repeat;
+	mask-repeat: no-repeat;
+	-webkit-mask-position: center;
+	mask-position: center;
+	-webkit-mask-size: contain;
+	mask-size: contain;
+}
+
+/* ring with a "+" : bonus received */
+.bp-fns-icon-plus::before {
+	color: #16a34a;
+	-webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill-rule='evenodd' d='M12 2a10 10 0 100 20 10 10 0 000-20zm0 2a8 8 0 110 16 8 8 0 010-16zm-1 4v3H8v2h3v3h2v-3h3v-2h-3V8h-2z'/%3E%3C/svg%3E");
+	mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill-rule='evenodd' d='M12 2a10 10 0 100 20 10 10 0 000-20zm0 2a8 8 0 110 16 8 8 0 010-16zm-1 4v3H8v2h3v3h2v-3h3v-2h-3V8h-2z'/%3E%3C/svg%3E");
+}
+
+/* ring with a "-" : bonus deducted */
+.bp-fns-icon-minus::before {
+	color: #dc2626;
+	-webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill-rule='evenodd' d='M12 2a10 10 0 100 20 10 10 0 000-20zm0 2a8 8 0 110 16 8 8 0 010-16zm-4 7v2h8v-2z'/%3E%3C/svg%3E");
+	mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill-rule='evenodd' d='M12 2a10 10 0 100 20 10 10 0 000-20zm0 2a8 8 0 110 16 8 8 0 010-16zm-4 7v2h8v-2z'/%3E%3C/svg%3E");
+}

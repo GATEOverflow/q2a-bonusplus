@@ -1,13 +1,7 @@
 <?php
 
-/*
-	Plugin Name: q2a Bonus Plus
-*/
-
 return array(
-	'enable_plugin' => 'Enable Plugin',
-	'bonusplus_exclude_css'  => 'Do not add inline CSS',
-	'bonusplus_exclude_css_note'  => '(If you tick this, you should manually add CSS codes of bonusplus to your main css file)',
+	
 	'reason' => 'Reason of Bonusing',
 	'reason_1' => 'Birthday Gift',
 	'reason_2' => 'Impressive Performance',
@@ -26,5 +20,6 @@ return array(
 	'max_bonus_amount_note' => 'Set mamimum bonus amount allowed per bonus click action',
 	'min_bonus_amount_note' => 'Set minimum bonus amount allowed per bonus click action',
 	'send' => 'Send',
+	'bonus_points' => 'Bonus Points given by Admins',
 	
 );
