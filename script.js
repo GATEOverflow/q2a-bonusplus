@@ -80,13 +80,11 @@
 		});
 
 		reason.addEventListener('change', toggleOther);
+		amount.addEventListener('input', updatePreview);
+		modal.addEventListener('change', function (e) {
+			if (e.target.name === 'bp-dir') updatePreview();
+		});
 		submit.addEventListener('click', send);
-	}
-
-	function toggleOther() {
-		var isOther = reason.value === 'other';
-		otherWrap.hidden = !isOther;
-		if (isOther) other.focus();
 	}
 
 	function openModal() {
@@ -110,13 +108,46 @@
 		alertBox.className = 'bp-alert';
 	}
 
+	function selectedEffect() {
+		var r = document.querySelector('input[name="bp-dir"]:checked');
+		return r && r.value === 'deduct' ? -1 : 1;
+	}
+
+	function updatePreview() {
+		var eff = selectedEffect();
+		var limit = eff < 0 ? Math.abs(cfg.min) : cfg.max;
+		$('bp-range').textContent = '1 \u2026 ' + limit;
+		amount.max = limit;
+		var n = parseInt(amount.value, 10);
+		$('bp-preview').textContent = n > 0 ? (eff < 0 ? '\u2212' : '+') + n : '';
+	}
+
+	// the chosen reason sets the default direction; the admin may flip it afterwards
+	function syncDirection() {
+		var opt = reason.options[reason.selectedIndex];
+		var eff = opt && opt.getAttribute('data-effect') === '-1' ? 'deduct' : 'add';
+		var radio = document.querySelector('input[name="bp-dir"][value="' + eff + '"]');
+		if (radio) radio.checked = true;
+		updatePreview();
+	}
+
+	function toggleOther() {
+		var isOther = reason.value === 'other';
+		otherWrap.hidden = !isOther;
+		if (isOther) other.focus();
+		syncDirection();
+	}
+
 	function validate() {
 		var raw = amount.value.trim();
 		var n = parseInt(raw, 10);
 
-		if (!/^-?\d+$/.test(raw) || n === 0) return cfg.i18n.amountInvalid;
-		if (n < cfg.min || n > cfg.max) {
-			return cfg.i18n.amountRange.replace('%min%', cfg.min).replace('%max%', cfg.max);
+		if (!/^\d+$/.test(raw) || n <= 0) return cfg.i18n.amountInvalid;
+
+		var eff = selectedEffect();
+		if (eff * n < cfg.min || eff * n > cfg.max) {
+			var limit = eff < 0 ? Math.abs(cfg.min) : cfg.max;
+			return cfg.i18n.amountRange.replace('%min%', 1).replace('%max%', limit);
 		}
 		if (!reason.value) return cfg.i18n.reasonRequired;
 		if (reason.value === 'other' && !other.value.trim()) return cfg.i18n.otherRequired;
@@ -139,6 +170,7 @@
 			code: cfg.code,
 			receiverid: cfg.receiverid,
 			amount: parseInt(amount.value, 10),
+			direction: selectedEffect() < 0 ? 'deduct' : 'add',
 			reasonid: reason.value,
 			newreason: reason.value === 'other' ? other.value.trim() : ''
 		};

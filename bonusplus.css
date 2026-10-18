@@ -322,3 +322,12 @@ html.bp-lock { overflow: hidden; }
 	border-color: transparent;
 }
 .bp-inline-primary:hover { background: var(--bp-accent-hover); }
+
+.bp-seg { display: flex; border: 1px solid var(--bp-border); border-radius: 8px; overflow: hidden; }
+.bp-field label.bp-seg-opt { flex: 1; position: relative; margin: 0; text-align: center; font-weight: 600; cursor: pointer; }
+.bp-field .bp-seg input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; padding: 0; border: 0; }
+.bp-seg-opt span { display: block; padding: 9px 12px; color: var(--bp-muted); }
+.bp-seg-opt + .bp-seg-opt span { border-left: 1px solid var(--bp-border); }
+.bp-seg-add input:checked + span { background: var(--bp-ok-bg); color: var(--bp-ok-text); }
+.bp-seg-deduct input:checked + span { background: var(--bp-danger-bg); color: var(--bp-danger-text); }
+.bp-seg input:focus-visible + span { outline: 2px solid var(--bp-accent); outline-offset: -2px; }

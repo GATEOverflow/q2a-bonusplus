@@ -91,7 +91,7 @@ function q2a_bp_clean_title($title)
 // all reasons (or only the active ones, which is what the modal shows)
 function q2a_bp_get_reasons($activeonly = true)
 {
-	$sql = 'SELECT reasonid, title, active FROM ^bonusplus_reasons'
+	$sql = 'SELECT reasonid, title, active, effect FROM ^bonusplus_reasons'
 		. ($activeonly ? ' WHERE active=1' : '')
 		. ' ORDER BY reasonid';
 	return qa_db_read_all_assoc(qa_db_query_sub($sql));
@@ -105,17 +105,28 @@ function q2a_bp_reason_is_active($reasonid)
 	);
 }
 
+// find whether the reason is positive or negative
+function q2a_bp_get_reason_effect($reasonid)
+{
+	$effect = (int)qa_db_read_one_value(
+		qa_db_query_sub('SELECT effect FROM ^bonusplus_reasons WHERE reasonid=#', (int)$reasonid),
+		true
+	);
+	return ($effect < 0) ? -1 : 1;
+}
+
 // returns the id of a reason with this title; creates it only when it does not exist yet (no repeats)
-function q2a_bp_find_or_create_reason($title, $active)
+function q2a_bp_find_or_create_reason($title, $active, $effect = 1)
 {
 	$active = ((int)$active === 1) ? 1 : 0;
+	$effect = (int)$effect;
 	$title = q2a_bp_clean_title($title);
 	if ($title === '') {
 		return null;
 	}
 
 	// UNIQUE key on title makes this safe even if two admins add the same text at once
-	qa_db_query_sub('INSERT IGNORE INTO ^bonusplus_reasons (title, active, created) VALUES ($, #, NOW())', $title, $active);
+	qa_db_query_sub('INSERT IGNORE INTO ^bonusplus_reasons (title, active, created, effect) VALUES ($, #, NOW(), #)', $title, $active, $effect);
 
 	$id = qa_db_read_one_value(
 		qa_db_query_sub('SELECT reasonid FROM ^bonusplus_reasons WHERE title=$ LIMIT 1', $title),

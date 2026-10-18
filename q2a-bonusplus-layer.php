@@ -2,7 +2,7 @@
 
 class qa_html_theme_layer extends qa_html_theme_base
 {
-	private $version = 1.5;
+	private $version = 2.0;
 	// profile page, user allowed to give bonus points
 	private function bonusplus_can_give()
 	{
@@ -52,7 +52,7 @@ class qa_html_theme_layer extends qa_html_theme_base
 				'canGive'    => (bool)$this->bonusplus_can_give(),
 				'showGiver'  => (bool)$this->bonusplus_can_give(), // "given by" column only for bonus givers
 				'i18n'       => array(
-					'amountInvalid'  => q2a_bp_lang('err_amount', 'Enter a whole number other than 0.'),
+					'amountInvalid'  => q2a_bp_lang('err_amount', 'Enter a whole number greater than 0'),
 					'amountRange'    => q2a_bp_lang('err_range', 'Amount must be between %min% and %max%.'),
 					'reasonRequired' => q2a_bp_lang('err_reason', 'Please choose a reason.'),
 					'otherRequired'  => q2a_bp_lang('err_other', 'Please write the new reason.'),
@@ -230,7 +230,7 @@ class qa_html_theme_layer extends qa_html_theme_base
 
 			$options = '';
 			foreach (q2a_bp_get_reasons(true) as $r) {
-				$options .= '<option value="' . (int)$r['reasonid'] . '">' . qa_html($r['title']) . '</option>';
+				$options .= '<option value="' . (int)$r['reasonid'] . '" data-effect="' . ((int)$r['effect'] < 0 ? -1 : 1) . '">' . qa_html($r['title']) . '</option>';
 			}
 
 			$this->output('
@@ -245,15 +245,15 @@ class qa_html_theme_layer extends qa_html_theme_base
 
 		<div class="bp-field">
 			<label for="bp-amount">' . qa_html(q2a_bp_lang('bonus_amount', 'Amount')) . '</label>
-			<input type="number" id="bp-amount" step="1" min="' . $min . '" max="' . $max . '" inputmode="numeric" placeholder="e.g. 10" value="100">
-			<small>' . $min . ' &hellip; ' . $max . '</small>
+			<input type="number" id="bp-amount" step="1" min="1" max="' . $max . '" inputmode="numeric" placeholder="e.g. 10" value="100">
+			<small id="bp-range">1 &hellip; ' . $max . '</small>
 		</div>
 
 		<div class="bp-field">
 			<label for="bp-reason">' . qa_html(q2a_bp_lang('reason_label', 'Reason')) . '</label>
 			<select id="bp-reason">
 				' . $options . '
-				<option value="other">' . qa_html(q2a_bp_lang('reason_other', 'Other...')) . '</option>
+				<option value="other" data-effect="1">' . qa_html(q2a_bp_lang('reason_other', 'Other...')) . '</option>
 			</select>
 		</div>
 
@@ -261,6 +261,14 @@ class qa_html_theme_layer extends qa_html_theme_base
 			<label for="bp-other">' . qa_html(q2a_bp_lang('reason_new', 'New reason')) . '</label>
 			<textarea id="bp-other" rows="2" maxlength="100" placeholder="' . qa_html(q2a_bp_lang('reason_new_ph', 'Short description')) . '"></textarea>
 			<small>' . qa_html(q2a_bp_lang('reason_new_note', 'It will be saved and offered as a reason next time.')) . '</small>
+		</div>
+		<div class="bp-field">
+			<label>' . qa_html(q2a_bp_lang('direction_label', 'Type')) . '</label>
+			<div class="bp-seg" role="radiogroup">
+				<label class="bp-seg-opt bp-seg-add"><input type="radio" name="bp-dir" value="add" checked><span>' . qa_html(q2a_bp_lang('dir_add', 'Add (+)')) . '</span></label>
+				<label class="bp-seg-opt bp-seg-deduct"><input type="radio" name="bp-dir" value="deduct"><span>' . qa_html(q2a_bp_lang('dir_deduct', 'Deduct (-)')) . '</span></label>
+			</div>
+			<small id="bp-preview"></small>
 		</div>
 
 		<div class="bp-actions">

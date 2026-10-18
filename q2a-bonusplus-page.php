@@ -108,26 +108,25 @@ class q2a_bonusplus_page
 			$this->respond(array('error' => q2a_bp_lang('err_self', 'You cannot give bonus points to yourself.')));
 		}
 
-		// amount: whole number, not 0, inside the admin's min/max
+		// the admin types a plain positive number; the direction decides + or -
 		$amount = isset($data['amount']) ? filter_var($data['amount'], FILTER_VALIDATE_INT) : false;
-		$min = (int)qa_opt('bonusplus_min_amount');
-		$max = (int)qa_opt('bonusplus_max_amount');
-
-		if ($amount === false || $amount === 0) {
-			$this->respond(array('error' => q2a_bp_lang('err_amount', 'Enter a whole number other than 0.')));
+		if ($amount === false || $amount <= 0) {
+			$this->respond(array('error' => q2a_bp_lang('err_amount', 'Enter a whole number greater than 0.')));
 		}
-		if ($amount < $min || $amount > $max) {
-			$this->respond(array('error' => strtr(
-				q2a_bp_lang('err_range', 'Amount must be between %min% and %max%.'),
-				array('%min%' => $min, '%max%' => $max)
-			)));
+
+		// what the admin chose in the modal wins; otherwise the reason's own default
+		if (isset($data['direction']) && in_array($data['direction'], array('add', 'deduct'), true)) {
+			$direction = ($data['direction'] === 'deduct') ? -1 : 1;
+		}
+		else {
+			$direction = q2a_bp_get_reason_effect($reasonid);
 		}
 
 		// reason: an existing active one, or "other" = new text saved once in the reasons table
 		$reason = isset($data['reasonid']) ? $data['reasonid'] : '';
 
 		if ($reason === 'other') {
-			$reasonid = q2a_bp_find_or_create_reason(isset($data['newreason']) ? $data['newreason'] : '');
+			$reasonid = q2a_bp_find_or_create_reason(isset($data['newreason']) ? $data['newreason'] : '', 0,$direction);
 			if (!$reasonid) {
 				$this->respond(array('error' => q2a_bp_lang('err_other', 'Please write the new reason.')));
 			}
@@ -138,6 +137,25 @@ class q2a_bonusplus_page
 				$this->respond(array('error' => q2a_bp_lang('err_reason', 'Please choose a reason.')));
 			}
 		}
+
+
+
+		// a brand-new reason (effect still 0) takes the direction chosen now as its default
+		qa_db_query_sub('UPDATE ^bonusplus_reasons SET effect=# WHERE reasonid=# AND effect=0', $direction, $reasonid);
+
+		$signed = $direction * $amount;
+		$min = (int)qa_opt('bonusplus_min_amount');
+		$max = (int)qa_opt('bonusplus_max_amount');
+
+		if ($signed < $min || $signed > $max) {
+			$limit = ($direction < 0) ? abs($min) : $max;
+			$this->respond(array('error' => strtr(
+				q2a_bp_lang('err_range', 'Amount must be between %min% and %max%.'),
+				array('%min%' => 1, '%max%' => $limit)
+			)));
+		}
+
+		$amount = $signed; // from here on the amount carries its sign (save, points, notification)
 
 		$bonustime = gmdate('Y-m-d H:i:s', time());
 

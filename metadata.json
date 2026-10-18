@@ -6,7 +6,7 @@
 	"date": "2026-10-16",
 	"author": "Yhlas Sovbetov, Shaik Masthan",
 	"author_uri": "https://github.com/ihlassovbetov",
-	"update_uri": "https://raw.github.com/Ga/q2a-bonusplus/qa-plugin.php",
+	"update_uri": "",
 	"license": "GPLv2",
 	"min_q2a": "1.7.4",
 	"load_order": "after_db_init"

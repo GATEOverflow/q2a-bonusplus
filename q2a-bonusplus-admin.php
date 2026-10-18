@@ -2,18 +2,63 @@
 
 class q2a_bonusplus_admin
 {
-	// create the tables if they do not exist yet
+	// engine / charset / collation every plugin table should end up with
+	private $collation = 'utf8mb4_unicode_ci';
+
+	// does the column exist in this (real, prefixed) table?
+	private function column_exists($table, $column)
+	{
+		return (bool)qa_db_read_one_value(
+			qa_db_query_sub('SHOW COLUMNS FROM ' . $table . ' LIKE $', $column),
+			true
+		);
+	}
+
+	// engine + collation of a table, or null if the table does not exist
+	private function table_info($table)
+	{
+		return qa_db_read_one_assoc(
+			qa_db_query_sub(
+				'SELECT ENGINE AS engine, TABLE_COLLATION AS collation_name
+				 FROM information_schema.TABLES
+				 WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=$',
+				$table
+			),
+			true
+		);
+	}
+
+	// queries that bring an existing table to InnoDB + utf8mb4 (nothing if it already is)
+	private function upgrade_table($name)
+	{
+		$queries = array();
+		$info = $this->table_info(qa_db_add_table_prefix($name));
+
+		if ($info) {
+			if (strcasecmp($info['engine'], 'InnoDB') !== 0) {
+				$queries[] = 'ALTER TABLE ^' . $name . ' ENGINE=InnoDB';
+			}
+			if (strcasecmp($info['collation_name'], $this->collation) !== 0) {
+				$queries[] = 'ALTER TABLE ^' . $name . ' CONVERT TO CHARACTER SET utf8mb4 COLLATE ' . $this->collation;
+			}
+		}
+		return $queries;
+	}
+
+	// create / migrate the tables. Safe to run on a fresh site, on the first version of the plugin,
+	// or on a site that is already up to date (then it returns nothing).
 	public function init_queries($tableslc)
 	{
 		$queries = array();
 
 		$bonustable  = qa_db_add_table_prefix('bonusplus');
 		$reasontable = qa_db_add_table_prefix('bonusplus_reasons');
+		$tail = 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=' . $this->collation;
 
-		if (!in_array($bonustable, $tableslc)) {
+		// ---- ^bonusplus ----
+		if (!in_array(strtolower($bonustable), $tableslc)) {
 			require_once QA_INCLUDE_DIR . 'qa-app-users.php';
 
-			// no bonusnote column any more: the text lives in ^bonusplus_reasons
 			$queries[] = '
 				CREATE TABLE `^bonusplus` (
 				  `bonusid` int(10) NOT NULL AUTO_INCREMENT,
@@ -25,31 +70,47 @@ class q2a_bonusplus_admin
 				  PRIMARY KEY (`bonusid`),
 				  KEY `receiverid` (`receiverid`),
 				  KEY `reasonid` (`reasonid`)
-				)
-				ENGINE=MyISAM DEFAULT CHARSET=utf8;
+				) ' . $tail . ';
 			';
 		}
+		else {
+			$queries = array_merge($queries, $this->upgrade_table('bonusplus'));
+		}
 
-		if (!in_array($reasontable, $tableslc)) {
+		// ---- ^bonusplus_reasons ----
+		// effect: 1 = adds points, -1 = deducts points, 0 = not decided yet (treated as 1)
+		if (!in_array(strtolower($reasontable), $tableslc)) {
 			$queries[] = '
 				CREATE TABLE `^bonusplus_reasons` (
 				  `reasonid` int(10) UNSIGNED NOT NULL AUTO_INCREMENT,
 				  `title` varchar(100) NOT NULL,
 				  `active` tinyint(1) NOT NULL DEFAULT 1,
+				  `effect` tinyint(4) NOT NULL DEFAULT 0,
 				  `created` datetime NULL,
 				  PRIMARY KEY (`reasonid`),
 				  UNIQUE KEY `title` (`title`)
-				)
-				ENGINE=MyISAM DEFAULT CHARSET=utf8;
+				) ' . $tail . ';
 			';
 
-			// default reasons keep ids 1-8, so rows already stored in ^bonusplus still match
+			// default reasons keep ids 1-8, so rows already stored in ^bonusplus still match.
+			// Change a 1 to -1 below for a default reason that should deduct points.
+			$defaulteffects = array(1 => 1, 2 => 1, 3 => 1, 4 => 1, 5 => 1, 6 => 1, 7 => 1, 8 => 1);
+
 			$values = array();
-			for ($i = 1; $i <= 8; $i++) {
+			foreach ($defaulteffects as $i => $effect) {
 				$title = q2a_bp_clean_title(q2a_bp_lang('reason_' . $i, 'Reason ' . $i));
-				$values[] = '(' . $i . ", '" . qa_db_escape_string($title) . "', 1, NOW())";
+				$values[] = '(' . $i . ", '" . qa_db_escape_string($title) . "', 1, " . (int)$effect . ', NOW())';
 			}
-			$queries[] = 'INSERT IGNORE INTO ^bonusplus_reasons (reasonid, title, active, created) VALUES ' . implode(',', $values);
+			$queries[] = 'INSERT IGNORE INTO ^bonusplus_reasons (reasonid, title, active, effect, created) VALUES ' . implode(',', $values);
+		}
+		else {
+			$queries = array_merge($queries, $this->upgrade_table('bonusplus_reasons'));
+
+			$hascolumn = $this->column_exists($reasontable, 'effect');
+
+			if (!$hascolumn) {
+				$queries[] = 'ALTER TABLE ^bonusplus_reasons ADD COLUMN `effect` tinyint(4) NOT NULL DEFAULT 1 AFTER `active`';
+			}
 		}
 
 		return empty($queries) ? null : $queries;
@@ -104,26 +165,28 @@ class q2a_bonusplus_admin
 			qa_opt('bonusplus_min_amount', (int)qa_post_text('bonusplus_min_amount_field'));
 			qa_opt('bonusplus_max_amount', (int)qa_post_text('bonusplus_max_amount_field'));
 
-			// rename / enable / disable existing reasons
+			// rename / enable / disable / change direction of existing reasons
 			// (disabled instead of deleted, so old bonus history still shows its reason)
 			foreach (q2a_bp_get_reasons(false) as $r) {
-				$id    = (int)$r['reasonid'];
-				$title = q2a_bp_clean_title(qa_post_text('bp_title_' . $id));
+				$id     = (int)$r['reasonid'];
+				$title  = q2a_bp_clean_title(qa_post_text('bp_title_' . $id));
 				$active = qa_post_text('bp_active_' . $id) ? 1 : 0;
+				$effect = (qa_post_text('bp_effect_' . $id) === '-1') ? -1 : 1;
 
 				if ($title === '') {
 					$title = $r['title']; // never save an empty name
 				}
 				qa_db_query_sub(
-					'UPDATE IGNORE ^bonusplus_reasons SET title=$, active=# WHERE reasonid=#',
-					$title, $active, $id
+					'UPDATE IGNORE ^bonusplus_reasons SET title=$, active=#, effect=# WHERE reasonid=#',
+					$title, $active, $effect, $id
 				);
 			}
 
-			// add a new reason (ignored if the same text already exists)
+			// add a new reason (if the same text already exists, that reason is updated instead)
 			$newreason = q2a_bp_clean_title(qa_post_text('bp_new_reason'));
+			$neweffect = (qa_post_text('bp_new_effect') === '-1') ? -1 : 1;
 			if ($newreason !== '') {
-				q2a_bp_find_or_create_reason($newreason, true);
+				$newid = q2a_bp_find_or_create_reason($newreason, true, $neweffect);
 			}
 		}
 
@@ -163,10 +226,16 @@ class q2a_bonusplus_admin
 		// ---- reasons manager ----
 		$rows = '';
 		foreach (q2a_bp_get_reasons(false) as $r) {
-			$id = (int)$r['reasonid'];
+			$id  = (int)$r['reasonid'];
+			$eff = ((int)$r['effect'] < 0) ? -1 : 1; // 0 (not decided) counts as "add"
+
 			$rows .= '<tr>'
 				. '<td style="padding:4px 8px;">#' . $id . '</td>'
 				. '<td style="padding:4px 8px;"><input type="text" class="qa-form-tall-text" maxlength="100" name="bp_title_' . $id . '" value="' . qa_html($r['title']) . '"></td>'
+				. '<td style="padding:4px 8px;"><select name="bp_effect_' . $id . '">'
+				. '<option value="1"' . ($eff > 0 ? ' selected' : '') . '>Add (+)</option>'
+				. '<option value="-1"' . ($eff < 0 ? ' selected' : '') . '>Deduct (&minus;)</option>'
+				. '</select></td>'
 				. '<td style="padding:4px 8px;text-align:center;"><input type="checkbox" name="bp_active_' . $id . '" value="1"' . ($r['active'] ? ' checked' : '') . '></td>'
 				. '</tr>';
 		}
@@ -177,9 +246,10 @@ class q2a_bonusplus_admin
 			'html'  => '<table style="border-collapse:collapse;max-width:100%;"><thead><tr>'
 				. '<th style="text-align:left;padding:4px 8px;">ID</th>'
 				. '<th style="text-align:left;padding:4px 8px;">Reason</th>'
+				. '<th style="text-align:left;padding:4px 8px;">Default</th>'
 				. '<th style="padding:4px 8px;">Active</th>'
 				. '</tr></thead><tbody>' . $rows . '</tbody></table>',
-			'note'  => 'Untick "Active" to remove a reason from the list. It is not deleted, so old bonus history keeps its text.',
+			'note'  => 'Default decides whether the typed amount is added or deducted. It can still be switched while giving a bonus. Untick "Active" to remove a reason from the list; it is not deleted, so old bonus history keeps its text.',
 		);
 
 		$fields[] = array(
@@ -188,6 +258,14 @@ class q2a_bonusplus_admin
 			'tags'  => 'name="bp_new_reason" maxlength="100"',
 			'value' => '',
 			'note'  => 'Leave empty if you do not want to add one. Reasons typed by users under "Other" are added here automatically.',
+		);
+
+		$fields[] = array(
+			'type'    => 'select',
+			'label'   => 'Default for the new reason',
+			'tags'    => 'name="bp_new_effect"',
+			'options' => array('1' => 'Add (+)', '-1' => 'Deduct (-)'),
+			'value'   => 'Add (+)',
 		);
 
 		return array(
